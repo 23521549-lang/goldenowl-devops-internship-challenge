@@ -1,0 +1,10 @@
+aws_region         = "ap-southeast-1"
+project_name       = "goldenowl"
+environment        = "dev"
+availability_zones = ["ap-southeast-1a", "ap-southeast-1b"]
+container_port     = 3000
+task_cpu           = 256
+task_memory        = 512
+desired_count      = 1
+autoscaling_min    = 1
+autoscaling_max    = 3
