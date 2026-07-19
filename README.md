@@ -5,11 +5,11 @@ Node.js service deployed to **AWS ECS Fargate**, with CI/CD via **GitHub Actions
 ## Live deployment
 
 ```text
-http://goldenowl-dev-alb-1183085817.ap-southeast-1.elb.amazonaws.com
+http://goldenowl-dev-alb-1580420975.ap-southeast-1.elb.amazonaws.com
 ```
 
 ```bash
-curl http://goldenowl-dev-alb-1183085817.ap-southeast-1.elb.amazonaws.com
+curl http://goldenowl-dev-alb-1580420975.ap-southeast-1.elb.amazonaws.com
 # {"message":"Welcome warriors to Golden Owl!"}
 ```
 
@@ -22,34 +22,18 @@ flowchart TD
     C -->|master only| D[Build image, push to ECR]
     D --> E[Render new task definition]
     E --> F[Deploy to ECS - rolling update]
-    F --> G[Application Load Balancer]
-    G --> H[ECS Fargate Tasks - 1 to 3]
+    F --> G[Application Load Balancer - public subnets]
+    G --> H[ECS Fargate Tasks - private subnets, 1 to 3]
+    H -->|outbound only| N[NAT Gateway]
+    N --> INET[Internet]
     H -.CPU 70 percent.-> I[Application Auto Scaling]
-    H --> J[VPC - 2 public subnets, 2 AZs]
 ```
 
 Feature branches run tests only. Only `master` triggers build and deploy.
 
-## Repository layout
+## Docker
 
-```text
-.github/workflows/ci-cd.yml   - CI/CD pipeline
-src/                           - Node.js app + Dockerfile
-terraform/
-  main.tf                      - Root module, wires other modules
-  bootstrap.tf                  - Bootstrap module (run once)
-  backend.tf.disabled           - S3 backend config (enabled by init.sh)
-  terraform.tfvars              - Environment-specific values
-  modules/
-    bootstrap/                   - S3 bucket + DynamoDB lock table
-    networking/                  - VPC, subnets, IGW, route tables
-    ecr/                         - Container image repository
-    iam/                         - ECS execution and task roles
-    alb/                         - Load balancer, target group, listener
-    ecs/                         - Cluster, task definition, service
-    autoscaling/                  - CPU-based auto scaling policy
-scripts/init.sh                 - Bootstrap + backend migration automation
-```
+`src/Dockerfile` builds on `node:20-alpine` for a small image footprint. Dependencies are installed with `npm ci --omit=dev` so devDependencies (jest, eslint, supertest) never ship in the runtime image. The container exposes port 3000 and runs `node index.js` directly, no process manager needed since ECS handles restarts and scaling.
 
 ## CI/CD pipeline
 
@@ -66,7 +50,9 @@ Terraform, fully parameterized (no hardcoded values), modular (loosely coupled v
 
 | Resource | Purpose |
 |---|---|
-| VPC + 2 public subnets (2 AZs) | Network isolation, availability |
+| VPC + 2 public subnets (2 AZs) | Hosts the ALB, internet-facing |
+| VPC + 2 private subnets (2 AZs) | Hosts ECS tasks, no direct inbound internet access |
+| NAT Gateway | Lets private-subnet tasks pull images from ECR and reach the internet outbound |
 | Amazon ECR | Container image registry |
 | ECS Fargate cluster + service | Runs the application |
 | Application Load Balancer | Public entry point, health checks |
@@ -89,13 +75,25 @@ curl localhost:3000
 
 ## Deploying from scratch
 
+End-to-end steps, in order, from an empty AWS account to a working deployment.
+
 ### Prerequisites
 
 - AWS CLI configured with sufficient IAM permissions
 - Terraform >= 1.5.0
 - Docker
 
-### 1. OIDC setup (one-time, lets GitHub Actions assume an AWS role)
+### 1. Set up AWS credentials locally
+
+```bash
+aws configure --profile goldenowl
+export AWS_PROFILE=goldenowl
+aws sts get-caller-identity
+```
+
+### 2. One-time OIDC setup
+
+Lets GitHub Actions assume an AWS role without static keys stored as secrets.
 
 Get the current GitHub OIDC thumbprint:
 
@@ -172,40 +170,126 @@ aws iam put-role-policy --role-name goldenowl-github-actions \
   }'
 ```
 
-### 2. Configure `terraform.tfvars`
+Keep the role ARN - it's needed in step 5.
 
-```hcl
-aws_region         = "ap-southeast-1"
-project_name       = "goldenowl"
-environment        = "dev"
-availability_zones = ["ap-southeast-1a", "ap-southeast-1b"]
-container_port     = 3000
-task_cpu           = 256
-task_memory        = 512
-desired_count      = 1
-autoscaling_min    = 1
-autoscaling_max    = 3
-```
+Note: this role and the OIDC provider are created by hand, not by Terraform. Terraform itself needs credentials to run, so the identity that bootstraps everything can't also be created by that same Terraform run without a chicken-and-egg problem. Foundational access (this role, the local IAM user used to run Terraform) is set up once, outside of code; the application infrastructure it manages (VPC, ECS, ALB, etc.) is what Terraform owns.
 
-### 3. Provision infrastructure
+### 3. Configure Terraform variables
 
 ```bash
 cd terraform
+cp terraform.tfvars.example terraform.tfvars
+# edit terraform.tfvars if needed
+```
+
+```hcl
+aws_region            = "ap-southeast-1"
+project_name          = "goldenowl"
+environment           = "dev"
+availability_zones    = ["ap-southeast-1a", "ap-southeast-1b"]
+private_subnet_cidrs  = ["10.0.10.0/24", "10.0.11.0/24"]
+container_port        = 3000
+task_cpu               = 256
+task_memory             = 512
+desired_count           = 1
+autoscaling_min         = 1
+autoscaling_max         = 3
+```
+
+### 4. Provision the infrastructure
+
+```bash
 bash ../scripts/init.sh
+```
+
+This bootstraps the S3 backend + DynamoDB lock table, migrates state to S3, then applies the VPC, ECR, ALB, ECS cluster/service, and autoscaling policy. Takes a few minutes, mostly waiting on the NAT Gateway and ECS service to stabilize. The script is idempotent - re-running it after the backend is already migrated just re-applies.
+
+At this point the ECS service is running with a `nginx:latest` placeholder image (no real app image exists yet). This is expected: the ALB health check targets port 3000 while nginx listens on port 80, so it fails health checks and ECS retries once or twice before step 6 fixes it with the real image.
+
+```bash
 terraform output
 ```
 
-### 4. Configure GitHub
+Save `ecr_repository_url`, `ecs_cluster_name`, `ecs_service_name` for the next step.
 
-Set under **Settings > Secrets and variables > Actions**.
+### 5. Configure GitHub repository secrets and variables
 
-**Secrets:** `AWS_ROLE_ARN` (role ARN from step 1), `AWS_REGION`
+Under **Settings > Secrets and variables > Actions**:
 
-**Variables:** `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`, `ECS_CONTAINER_NAME` - all from `terraform output`.
+- Secret `AWS_ROLE_ARN` - the role ARN from step 2
+- Secret `AWS_REGION` - e.g. `ap-southeast-1`
+- Variable `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`, `ECS_CONTAINER_NAME` - from `terraform output` in step 4
 
-### 5. Trigger first deployment
+### 6. Trigger the first deployment
 
-Push to `master`, or run `workflow_dispatch` from the Actions tab.
+```bash
+git push origin master
+```
+
+Or run `workflow_dispatch` from the Actions tab. Watch it run under **Actions**: `test` runs first, then `build-and-deploy` builds the image, pushes to ECR, and deploys to ECS. This replaces the nginx placeholder with the real app - once it does, the ALB health check starts passing within one check cycle.
+
+### 7. Verify
+
+```bash
+curl http://$(terraform output -raw app_url | sed 's|http://||')
+# {"message":"Welcome warriors to Golden Owl!"}
+```
+
+## Tearing down
+
+```bash
+cd terraform
+terraform destroy
+```
+
+Since the S3 backend bucket is itself managed by Terraform (`module.bootstrap`), destroying it too requires emptying it first - S3 buckets with versioning enabled won't delete while they still hold object versions:
+
+```bash
+aws s3api delete-objects --bucket <project>-<environment>-tfstate \
+  --delete "$(aws s3api list-object-versions --bucket <project>-<environment>-tfstate \
+  --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' --output json)"
+
+terraform destroy -target=module.bootstrap -lock=false
+```
+
+## Design decisions & trade-offs
+
+**Private subnets for ECS tasks.** Tasks run in private subnets with no public IP; only the ALB sits in public subnets. A NAT Gateway gives tasks outbound access to pull images from ECR and ship logs to CloudWatch. This is closer to a real production setup than putting everything in public subnets.
+
+**Health check grace period.** `health_check_grace_period_seconds` gives new tasks a window before the ALB starts health-checking them, so a slow-starting container isn't killed before it's ready. Kept short here since this app has no external dependencies (no DB connection, etc.) to wait on.
+
+**Single NAT Gateway.** One NAT Gateway shared across both private subnets, not one per AZ. Cheaper, with a single point of failure for outbound traffic - acceptable for a dev/test environment, not for production.
+
+**If this were real production, I would change:**
+- One NAT Gateway per AZ, for outbound-traffic high availability
+- Enable Container Insights on the ECS cluster (currently disabled to reduce cost)
+- Multiple environments (staging/prod) via separate `.tfvars` and workspaces, not just `dev`
+- HTTPS on the ALB via ACM certificate + Route 53 domain, instead of plain HTTP
+- Secrets (if any were needed) via AWS Secrets Manager or SSM Parameter Store, not environment variables
+- CloudWatch alarms on ECS/ALB metrics with SNS notifications
+- A non-default `desired_count` and `autoscaling_min` greater than 1, so a single AZ failure doesn't drop the service to zero tasks
+- The GitHub OIDC role and provider provisioned through Terraform as well, managed by a separate bootstrap identity outside this repo, instead of created by hand
+
+## Repository layout
+
+```text
+.github/workflows/ci-cd.yml   - CI/CD pipeline
+src/                           - Node.js app + Dockerfile
+terraform/
+  main.tf                      - Root module, wires other modules
+  bootstrap.tf                  - Bootstrap module (run once)
+  backend.tf.disabled           - S3 backend config (enabled by init.sh)
+  terraform.tfvars.example      - Template for environment-specific values
+  modules/
+    bootstrap/                   - S3 bucket + DynamoDB lock table
+    networking/                  - VPC, public/private subnets, NAT, route tables
+    ecr/                         - Container image repository
+    iam/                         - ECS execution and task roles
+    alb/                         - Load balancer, target group, listener
+    ecs/                         - Cluster, task definition, service
+    autoscaling/                  - CPU-based auto scaling policy
+scripts/init.sh                 - Bootstrap + backend migration automation
+```
 
 ## Bonus features
 
