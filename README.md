@@ -1,4 +1,4 @@
-# Golden Owl DevOps Internship — Technical Test
+# Golden Owl DevOps Internship - Technical Test
 
 Node.js service deployed to **AWS ECS Fargate**, with CI/CD via **GitHub Actions** and infrastructure in **Terraform**.
 
@@ -58,7 +58,7 @@ scripts/init.sh                 - Bootstrap + backend migration automation
 | `test` | Push/PR touching `src/**`, any branch | `npm ci` + `npm test` |
 | `build-and-deploy` | Push to `master`, or manual `workflow_dispatch` | Build image, push to ECR, render new task definition, deploy to ECS, wait for stability |
 
-Authenticates to AWS via **OIDC** — no static access keys stored in GitHub. The IAM role is scoped to ECR push and ECS deploy only.
+Authenticates to AWS via **OIDC** - no static access keys stored in GitHub. The IAM role is scoped to ECR push and ECS deploy only.
 
 ## Infrastructure
 
@@ -201,7 +201,7 @@ Set under **Settings > Secrets and variables > Actions**.
 
 **Secrets:** `AWS_ROLE_ARN` (role ARN from step 1), `AWS_REGION`
 
-**Variables:** `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`, `ECS_CONTAINER_NAME` — all from `terraform output`.
+**Variables:** `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`, `ECS_CONTAINER_NAME` - all from `terraform output`.
 
 ### 5. Trigger first deployment
 
@@ -209,5 +209,5 @@ Push to `master`, or run `workflow_dispatch` from the Actions tab.
 
 ## Bonus features
 
-- **Load balancer** — ALB in front of ECS, health-checked on the app's actual port
-- **Auto scaling** — CPU-based, 1-3 tasks
+- **Load balancer** - ALB in front of ECS, health-checked on the app's actual port
+- **Auto scaling** - CPU-based, 1-3 tasks
