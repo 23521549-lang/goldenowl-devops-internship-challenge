@@ -46,6 +46,12 @@ variable "desired_count" {
   default     = 1
 }
 
+variable "health_check_grace_period" {
+  description = "Seconds to wait before ALB health checks start on new tasks"
+  type        = number
+  default     = 60
+}
+
 variable "ecs_execution_role_arn" {
   description = "ECS task execution role ARN"
   type        = string

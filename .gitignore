@@ -1,19 +1,14 @@
-# Terraform
 **/.terraform/
 *.tfstate
 *.tfstate.*
-.terraform.lock.hcl
+terraform.tfvars
 
-# Node.js
 node_modules/
 npm-debug.log*
 coverage/
 
-# Environment variables
 .env
 
-# Editor
 .vscode/
 
-# OS
 .DS_Store

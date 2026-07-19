@@ -25,6 +25,12 @@ variable "public_subnet_cidrs" {
   default     = ["10.0.1.0/24", "10.0.2.0/24"]
 }
 
+variable "private_subnet_cidrs" {
+  description = "Private subnet CIDR blocks"
+  type        = list(string)
+  default     = ["10.0.10.0/24", "10.0.11.0/24"]
+}
+
 variable "availability_zones" {
   description = "Availability zones"
   type        = list(string)
@@ -58,6 +64,12 @@ variable "desired_count" {
   description = "Desired task count"
   type        = number
   default     = 1
+}
+
+variable "health_check_grace_period" {
+  description = "Seconds to wait before ALB health checks start on new tasks"
+  type        = number
+  default     = 60
 }
 
 variable "autoscaling_min" {

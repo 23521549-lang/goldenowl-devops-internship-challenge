@@ -9,12 +9,13 @@ locals {
 module "networking" {
   source = "./modules/networking"
 
-  project_name        = var.project_name
-  environment         = var.environment
-  vpc_cidr            = var.vpc_cidr
-  public_subnet_cidrs = var.public_subnet_cidrs
-  availability_zones  = var.availability_zones
-  tags                = local.common_tags
+  project_name         = var.project_name
+  environment          = var.environment
+  vpc_cidr             = var.vpc_cidr
+  public_subnet_cidrs  = var.public_subnet_cidrs
+  private_subnet_cidrs = var.private_subnet_cidrs
+  availability_zones   = var.availability_zones
+  tags                 = local.common_tags
 }
 
 module "ecr" {
@@ -48,20 +49,21 @@ module "alb" {
 module "ecs" {
   source = "./modules/ecs"
 
-  project_name          = var.project_name
-  environment           = var.environment
-  vpc_id                = module.networking.vpc_id
-  subnet_ids            = module.networking.public_subnet_ids
-  container_image       = var.container_image
-  container_port        = var.container_port
-  cpu                   = var.task_cpu
-  memory                = var.task_memory
-  desired_count         = var.desired_count
-  ecs_execution_role_arn = module.iam.ecs_execution_role_arn
-  ecs_task_role_arn      = module.iam.ecs_task_role_arn
-  target_group_arn      = module.alb.target_group_arn
-  alb_security_group_id = module.alb.alb_security_group_id
-  tags                  = local.common_tags
+  project_name              = var.project_name
+  environment               = var.environment
+  vpc_id                    = module.networking.vpc_id
+  subnet_ids                = module.networking.private_subnet_ids
+  container_image           = var.container_image
+  container_port            = var.container_port
+  cpu                       = var.task_cpu
+  memory                    = var.task_memory
+  desired_count             = var.desired_count
+  health_check_grace_period = var.health_check_grace_period
+  ecs_execution_role_arn    = module.iam.ecs_execution_role_arn
+  ecs_task_role_arn         = module.iam.ecs_task_role_arn
+  target_group_arn          = module.alb.target_group_arn
+  alb_security_group_id     = module.alb.alb_security_group_id
+  tags                      = local.common_tags
 }
 
 module "autoscaling" {
