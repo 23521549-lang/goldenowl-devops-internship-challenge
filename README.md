@@ -229,15 +229,29 @@ cd terraform
 terraform destroy
 ```
 
-Since the S3 backend bucket is itself managed by Terraform (`module.bootstrap`), destroying it too requires emptying it first - S3 buckets with versioning enabled won't delete while they still hold object versions:
+Since the S3 backend bucket is itself managed by Terraform (`module.bootstrap`), destroying it too requires a couple of extra steps - Terraform keeps writing state into the bucket during the destroy above, so new object versions can appear after you've already tried to empty it. Repeat the empty-and-destroy step until the bucket is confirmed empty:
 
 ```bash
-aws s3api delete-objects --bucket <project>-<environment>-tfstate \
-  --delete "$(aws s3api list-object-versions --bucket <project>-<environment>-tfstate \
-  --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' --output json)"
+BUCKET="<project>-<environment>-tfstate"
 
-terraform destroy -target=module.bootstrap -lock=false
+aws s3api delete-objects --bucket "$BUCKET" \
+  --delete "$(aws s3api list-object-versions --bucket "$BUCKET" \
+  --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' --output json)" 2>/dev/null
+
+aws s3api delete-objects --bucket "$BUCKET" \
+  --delete "$(aws s3api list-object-versions --bucket "$BUCKET" \
+  --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' --output json)" 2>/dev/null
+
+aws s3api list-object-versions --bucket "$BUCKET" --output json
 ```
+
+Once that command returns no `Versions` or `DeleteMarkers`, finish tearing down:
+
+```bash
+terraform destroy -target=module.bootstrap -lock=false
+aws s3api delete-bucket --bucket "$BUCKET" --region <region>
+```
+
 
 ## Design decisions & trade-offs
 
