@@ -62,6 +62,7 @@ module "ecs" {
   ecs_execution_role_arn    = module.iam.ecs_execution_role_arn
   ecs_task_role_arn         = module.iam.ecs_task_role_arn
   target_group_arn          = module.alb.target_group_arn
+  alb_listener_arn          = module.alb.listener_arn
   alb_security_group_id     = module.alb.alb_security_group_id
   tags                      = local.common_tags
 }

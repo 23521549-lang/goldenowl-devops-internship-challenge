@@ -2,6 +2,7 @@
 *.tfstate
 *.tfstate.*
 terraform.tfvars
+terraform/tfplan
 
 node_modules/
 npm-debug.log*
@@ -12,3 +13,4 @@ coverage/
 .vscode/
 
 .DS_Store
+

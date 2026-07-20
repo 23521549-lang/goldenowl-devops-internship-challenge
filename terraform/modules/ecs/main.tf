@@ -105,5 +105,7 @@ resource "aws_ecs_service" "this" {
     ignore_changes = [task_definition, desired_count]
   }
 
+  depends_on = [var.alb_listener_arn]
+
   tags = var.tags
 }

@@ -5,11 +5,11 @@ Node.js service deployed to **AWS ECS Fargate**, with CI/CD via **GitHub Actions
 ## Live deployment
 
 ```text
-http://goldenowl-dev-alb-1580420975.ap-southeast-1.elb.amazonaws.com
+http://goldenowl-dev-alb-657532972.ap-southeast-1.elb.amazonaws.com
 ```
 
 ```bash
-curl http://goldenowl-dev-alb-1580420975.ap-southeast-1.elb.amazonaws.com
+curl http://goldenowl-dev-alb-657532972.ap-southeast-1.elb.amazonaws.com
 # {"message":"Welcome warriors to Golden Owl!"}
 ```
 
@@ -256,6 +256,8 @@ aws s3api delete-bucket --bucket "$BUCKET" --region <region>
 ## Design decisions & trade-offs
 
 **Private subnets for ECS tasks.** Tasks run in private subnets with no public IP; only the ALB sits in public subnets. A NAT Gateway gives tasks outbound access to pull images from ECR and ship logs to CloudWatch. This is closer to a real production setup than putting everything in public subnets.
+
+**ECS service depends on the ALB listener explicitly.** Terraform doesn't automatically know that `aws_ecs_service` needs the ALB listener to exist first, even though both reference the same target group - the AWS API rejects an ECS service creation if the target group isn't yet associated with a listener. An explicit `depends_on` in the ECS module (passed the listener ARN) forces the correct creation order.
 
 **Health check grace period.** `health_check_grace_period_seconds` gives new tasks a window before the ALB starts health-checking them, so a slow-starting container isn't killed before it's ready. Kept short here since this app has no external dependencies (no DB connection, etc.) to wait on.
 

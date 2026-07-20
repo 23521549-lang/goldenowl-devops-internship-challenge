@@ -67,6 +67,11 @@ variable "target_group_arn" {
   type        = string
 }
 
+variable "alb_listener_arn" {
+  description = "ALB listener ARN, used only to sequence creation after the listener exists"
+  type        = string
+}
+
 variable "alb_security_group_id" {
   description = "ALB security group ID for ingress rule"
   type        = string
