@@ -15,21 +15,6 @@ curl http://goldenowl-dev-alb-1580420975.ap-southeast-1.elb.amazonaws.com
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    A[Developer push] -->|master or feature/**| B[GitHub Actions]
-    B --> C[Run tests: npm test]
-    C -->|master only| D[Build image, push to ECR]
-    D --> E[Render new task definition]
-    E --> F[Deploy to ECS - rolling update]
-    F --> G[Application Load Balancer - public subnets]
-    G --> H[ECS Fargate Tasks - private subnets, 1 to 3]
-    H -->|outbound only| N[NAT Gateway]
-    N --> INET[Internet]
-    H -.CPU 70 percent.-> I[Application Auto Scaling]
-```
-
-
 ![Architecture diagram](docs/architecture.png)
 Feature branches run tests only. Only `master` triggers build and deploy.
 
