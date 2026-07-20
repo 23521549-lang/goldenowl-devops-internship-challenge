@@ -15,7 +15,7 @@ curl http://goldenowl-dev-alb-1580420975.ap-southeast-1.elb.amazonaws.com
 
 ## Architecture
 
-![Architecture diagram](docs/architecture.png)
+<img src="docs/architecture.png" alt="Architecture diagram" width="500">
 Feature branches run tests only. Only `master` triggers build and deploy.
 
 ## Docker
