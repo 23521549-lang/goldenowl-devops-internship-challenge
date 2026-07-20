@@ -29,6 +29,8 @@ flowchart TD
     H -.CPU 70 percent.-> I[Application Auto Scaling]
 ```
 
+
+![Architecture diagram](docs/architecture.png)
 Feature branches run tests only. Only `master` triggers build and deploy.
 
 ## Docker
